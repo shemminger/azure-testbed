@@ -39,7 +39,7 @@ log() {
 }
 
 log "Validate scripts"
-ls
+
 # validate package args
 githubPath="raw.githubusercontent.com/shemminger/azure-testbed/master/scripts/"
 
@@ -187,7 +187,7 @@ done
 
 # Wait for deployment
 log "Waiting for VM deployment"
-az vm wait --created --ids $(az vm list -g $rg --query "[].id" -o tsv)
+az vm wait --created --ids $(az vm list -g $rg --query "[].id" -o tsv) >>$TEMP
 
 # Enable boot diagnostics
 log "Enabling boot diagnostics"
