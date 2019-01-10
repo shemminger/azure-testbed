@@ -2,8 +2,8 @@
 
 # get necessary packages
 apt-get update
-apt-get install git build-essential
-apt-get install libnuma-dev
+apt-get -y upgrade
+apt-get -y install git build-essential libnuma-dev rdma-core
 
 # get current source
 git clone https://dpdk.org/git/dpdk
@@ -34,16 +34,7 @@ CONFIG_RTE_TOOLCHAIN_GCC=y
 CONFIG_RTE_EAL_NUMA_AWARE_HUGEPAGES=y
 CONFIG_RTE_EAL_IGB_UIO=n
 CONFIG_RTE_EAL_VFIO=n
-CONFIG_RTE_KNI_KMOD=y
-CONFIG_RTE_LIBRTE_KNI=y
-CONFIG_RTE_LIBRTE_PMD_KNI=y
-CONFIG_RTE_LIBRTE_VHOST=y
-CONFIG_RTE_LIBRTE_VHOST_NUMA=y
-CONFIG_RTE_LIBRTE_VHOST_POSTCOPY=n
-CONFIG_RTE_LIBRTE_PMD_VHOST=y
-CONFIG_RTE_LIBRTE_IFC_PMD=y
 CONFIG_RTE_LIBRTE_PMD_AF_PACKET=y
-CONFIG_RTE_LIBRTE_PMD_SOFTNIC=y
 CONFIG_RTE_LIBRTE_PMD_TAP=y
 CONFIG_RTE_PROC_INFO=y
 
