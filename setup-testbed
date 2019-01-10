@@ -27,7 +27,7 @@ adminUsername=${AZURE_USER:-azure-user}
 adminPassword=$(pwgen -cny 13 1)
 
 # validate package args
-scriptURI="https://raw.githubusercontent.com/shemminger/azure-testbed/master/scripts"
+scriptUri="https://raw.githubusercontent.com/shemminger/azure-testbed/master/scripts/"
 
 # rest of the args are the packages
 # validate that script exists and build json arg
@@ -42,7 +42,8 @@ do
 	exit 1
     fi
     installUri=${scriptUri}${installName}
-    if [ ! wget -q -o - $installUri ]; then
+    wget -q -o /dev/null $installUri
+    if [ $? -ne 0 ]; then
 	echo "$installUri does not exist"
 	exit 1
     fi
