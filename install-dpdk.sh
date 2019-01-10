@@ -1,9 +1,10 @@
-#! /bin/bash
+#! /bin/bash -e
 
 # get necessary packages
 sudo apt-get update
-sudo apt-get -y upgrade
-sudo apt-get -y install git build-essential libnuma-dev rdma-core
+sudo apt-get -qy upgrade
+sudo apt-get -qy install git build-essential libnuma-dev rdma-core
+sudo apt-get -qy install meson
 
 # get current source
 git clone https://dpdk.org/git/dpdk
