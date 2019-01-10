@@ -3,43 +3,62 @@
 # Creates 3 machine Azure testbed
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 basename [region] [size]"
+    echo "Usage: $0 basename [packages]"
     exit 1
 fi
 
 baseName=$1
-location=${2:-$AZURE_LOCATION}
-Sku=${3:-D8s_v3}
+shift
 
-if [ -z "$AZURE_USER" ]; then
-    echo "AZURE_USER not set"
-    exit 1
-fi
-user=$AZURE_USER
-
-location=$AZURE_LOCATION
-if [ -z "$location" ]; then
-    echo "AZURE_LOCATION not set"
-    exit 1
-fi
-
-# normal authentication is with ssh not paswords
+# args from environment
+location=${AZURE_LOCATION:-westus}
+Sku=${AZURE_SKU:-D8s_v3}
 pubKey=$AZURE_SSH_KEY
+ubuntuImage=${AZURE_IMAGE:-"Canonical:UbuntuServer:18.10:latest"}
 
-ubuntuImage="Canonical:UbuntuServer:18.10:latest"
 vmSize=Standard_${Sku}
-
 rg=$user-$baseName-rg
 vnet=$baseName-vnet
 nsgName=$baseName-nsg
 storageName=$user$baseName
 subFront=$baseName-front
 subBack=$baseName-back
-adminUsername=azure-user
+adminUsername=${AZURE_USER:-azure-user}
 adminPassword=$(pwgen -cny 13 1)
 
-# All commands must succeed
-set -e
+# validate package args
+scriptURI="https://raw.githubusercontent.com/shemminger/azure-testbed/master/scripts"
+
+# rest of the args are the packages
+# validate that script exists and build json arg
+installJson='{ "fileUris" : [ ' 
+installCmd=
+for pkg
+do
+    installName="install-"$pkg".sh"
+    installScript=scripts/$installName
+    if [ ! -x $installScript ]; then
+	echo "$installScript not found or not executable"
+	exit 1
+    fi
+    installUri=${scriptUri}${installName}
+    if [ ! wget -q -o - $installUri ]; then
+	echo "$installUri does not exist"
+	exit 1
+    fi
+
+    # doing JSON in Bash is messy
+    installJson=${installJson}\"$installUri\"
+    shift
+    [ $# -eq 0 ] || installJson=${installJson}','
+    installCmd=${installCmd}"./"$installName";"
+done
+installJson=${installJson}'], "commandToExecute" : "'${installCmd}'" }'
+	
+
+# AZ CLI gives chatty JSON output lets put elsewhere
+TEMP=$(mktemp /tmp/az-output.XXXXXXXX)
+exec >$TEMP
 
 # create group / network / nsg 
 az group create --name $rg \
@@ -99,11 +118,9 @@ az vm create \
     --image $imageName \
     --admin-username $adminUsername \
     --authentication-type ssh \
-    --ssh-key-value "@$pubKey"
+    --ssh-key-value "@$pubKey" \
+    --no-wait
 
-echo "-----------------------------------------------" 
-echo "Bastion Server: $baseNameBastion done "
-echo "-----------------------------------------------" 
 
 # Ubuntu ACC
 vmPrefix=ubuntu-acc
@@ -115,7 +132,7 @@ do
     baseNameLoop=$vmPrefix$i
     nic1=nic1-${baseNameLoop}
     nic2=nic2-${baseNameLoop}
-    echo "Initing $baseNameLoop . Image: $imageName"
+    echo "Creating vm-$baseNameLoop . Image: $imageName"
 
     az network nic create -g $rg \
        --name $nic1 \
@@ -141,21 +158,33 @@ do
         --image $imageName \
 	--authentication-type all \
         --admin-username $adminUsername \
-        --admin-password "$adminPassword"
-        
-    echo -e "Vm $baseNameLoop created. Initing scripts"
-    az vm extension set -g $rg --vm-name vm-$baseNameLoop \
-       --name customScript \
-       --publisher Microsoft.Azure.Extensions \
-       --settings '{"fileUris": ["https://raw.githubusercontent.com/shemminger/azure-testbed/master/install-dpdk.sh"],"commandToExecute": "bash install-dpdk.sh"}'
+        --admin-password "$adminPassword" \
+	--no-wait
     
     echo "Vm $baseNameLoop created."
-    echo "-----------------------------------------------" 
 done
 
+# Wait for deployment
+echo "Waiting for VM deployment"
+az vm wait -g $rg $(az vm list -g $rg --query "[].id" -o tsv)
+
 # Enable boot diagnostics
+echo "Enabling boot diagnostics"
 az vm boot-diagnostics enable --storage $storageName \
    --ids $(az vm list -g $rg --query "[].id" -o tsv)
+
+for i in {1..2}; 
+do
+    pkgs
+	echo "Install $pkg on vm-$vmPrefix$i"
+	installName=install-$pkg
+	installUri=${scriptUri}${installName}
+	az vm extension set \
+	   -g $rg --vm-name vm-$vmPrefix$i \
+	   --name customScript \
+	   --publisher Microsoft.Azure.Extensions \
+	   --settings "$installJson"
+done
 
 # Display result
 echo -n 'public ip: '
