@@ -3,7 +3,8 @@
 # Install current version of DPDK with Mellanox suppor
 
 # get necessary packages
-sudo apt install git build-essential libnuma-dev rdma-core libibverbs-dev -y
+sudo apt-get install git build-essential \
+     libnuma-dev libmnl-dev rdma-core libibverbs-dev -y
 
 # get current source
 git clone https://dpdk.org/git/dpdk
