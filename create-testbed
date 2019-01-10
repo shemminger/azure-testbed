@@ -7,6 +7,7 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+# basename is component of global resources
 baseName=$1
 shift
 
@@ -15,80 +16,97 @@ location=${AZURE_LOCATION:-westus}
 Sku=${AZURE_SKU:-D8s_v3}
 pubKey=$AZURE_SSH_KEY
 ubuntuImage=${AZURE_IMAGE:-"Canonical:UbuntuServer:18.10:latest"}
+user=${AZURE_USER:-$USER}
 
 vmSize=Standard_${Sku}
 rg=$user-$baseName-rg
 vnet=$baseName-vnet
-nsgName=$baseName-nsg
-storageName=$user$baseName
 subFront=$baseName-front
 subBack=$baseName-back
-adminUsername=${AZURE_USER:-azure-user}
-adminPassword=$(pwgen -cny 13 1)
+nsgName=$baseName-nsg
 
+adminUsername=${AZURE_USER:-azure-user}
+adminPassword=$(pwgen -cny 18 1)
+
+# Storage accounts are limited to 24 characters and only alphanumeric
+# need it for boot diagnostics and serial console
+storageName=$(echo $rg $adminPassword | \
+		  md5sum | awk '{ print "st"substr($1,20) }')
+
+# Logging with timestamp
+log() {
+    echo $(date +"%T") "$@"
+}
+
+log "Validate scripts"
+ls
 # validate package args
-scriptUri="https://raw.githubusercontent.com/shemminger/azure-testbed/master/scripts/"
+githubPath="raw.githubusercontent.com/shemminger/azure-testbed/master/scripts/"
 
 # rest of the args are the packages
 # validate that script exists and build json arg
-installJson='{ "fileUris" : [ ' 
-installCmd=
+scriptJson='{ "fileUris" : [ '
+scriptCmd=
 for pkg
 do
-    installName="install-"$pkg".sh"
-    installScript=scripts/$installName
-    if [ ! -x $installScript ]; then
-	echo "$installScript not found or not executable"
+    scriptName=$pkg".sh"
+    if [ ! -x scripts/$scriptName ]; then
+	>&2 echo "$scriptName not found or not executable"
 	exit 1
     fi
-    installUri=${scriptUri}${installName}
-    wget -q -o /dev/null $installUri
+    scriptUri="https://"${githubPath}${scriptName}
+    wget -q -O /dev/null $scriptUri
     if [ $? -ne 0 ]; then
-	echo "$installUri does not exist"
+	>&2 echo "$scriptUri does not exist"
 	exit 1
     fi
 
     # doing JSON in Bash is messy
-    installJson=${installJson}\"$installUri\"
+    scriptJson=${scriptJson}\"$scriptUri\"
     shift
-    [ $# -eq 0 ] || installJson=${installJson}','
-    installCmd=${installCmd}"./"$installName";"
+    [ $# -eq 0 ] || scriptJson=${scriptJson}','
+    scriptCmd=${scriptCmd}"./"$scriptName";"
 done
-installJson=${installJson}'], "commandToExecute" : "'${installCmd}'" }'
-	
+scriptJson=${scriptJson}'], "commandToExecute" : "'${scriptCmd}'" }'
+
 
 # AZ CLI gives chatty JSON output lets put elsewhere
 TEMP=$(mktemp /tmp/az-output.XXXXXXXX)
-exec >$TEMP
+log "Creating resources (see $TEMP)"
 
-# create group / network / nsg 
+# Abort on error
+set -e
+
+log "Setup Azure resource group $rg in $location"
+
+# create group / network / nsg
 az group create --name $rg \
-   --location $location
+   --location $location >>$TEMP
 
 az network vnet create -g $rg \
    --name $vnet --address-prefix 172.16.0.0/16 \
    --subnet-name $subFront \
-   --subnet-prefix 172.16.1.0/24
+   --subnet-prefix 172.16.1.0/24 >>$TEMP
 
 az network vnet subnet create -g $rg \
    --vnet-name $vnet --name $subBack \
-   --address-prefix 172.16.2.0/24
+   --address-prefix 172.16.2.0/24 >>$TEMP
 
 az network nsg create --resource-group $rg \
-  --name $nsgName
+  --name $nsgName >>$TEMP
 
 az network nsg rule create --resource-group  $rg \
   --nsg-name $nsgName --name allow-ssh \
   --protocol tcp --direction inbound --priority 1000 --source-address-prefix '*' \
   --source-port-range '*' --destination-address-prefix '*' --destination-port-range 22 \
-  --access allow
+  --access allow >>$TEMP
 
 az storage account create --resource-group $rg \
    --name $storageName \
    --location $location \
-   --sku Standard_LRS --kind StorageV2
+   --sku Standard_LRS --kind StorageV2 >>$TEMP
 
-## bastion server 
+## bastion server
 vmPrefix=bastion1
 vmSizeBastion=Standard_B1s
 baseNameBastion=$vmPrefix
@@ -96,10 +114,10 @@ imageName=$ubuntuImage
 publicIp=pip-$baseName
 vNic=nic-$baseNameBastion
 
-echo "Creating Bastion Server: $baseNameBastion"
+log "Creating public IP $publicIp"
 
 az network public-ip create --resource-group $rg \
-    --name $publicIp --allocation-method static --idle-timeout 4
+    --name $publicIp --allocation-method static --idle-timeout 4 >> $TEMP
 
 az network nic create \
     -n $vNic \
@@ -107,8 +125,9 @@ az network nic create \
     --subnet $subFront \
     --network-security-group $nsgName \
     --public-ip-address $publicIp \
-    --vnet-name $vnet 
+    --vnet-name $vnet  >> $TEMP
 
+log "Creating Bastion Server: $baseNameBastion"
 az vm create \
     -g $rg \
     --os-disk-name osdisk-$baseNameBastion \
@@ -120,7 +139,7 @@ az vm create \
     --admin-username $adminUsername \
     --authentication-type ssh \
     --ssh-key-value "@$pubKey" \
-    --no-wait
+    --no-wait >> $TEMP
 
 
 # Ubuntu ACC
@@ -128,26 +147,27 @@ vmPrefix=ubuntu-acc
 accNet=true
 imageName=$ubuntuImage
 
-for i in {1..2}; 
+for i in {1..2};
 do
     baseNameLoop=$vmPrefix$i
     nic1=nic1-${baseNameLoop}
     nic2=nic2-${baseNameLoop}
-    echo "Creating vm-$baseNameLoop . Image: $imageName"
 
+    log "Creating $nic1 and $nic2"
     az network nic create -g $rg \
        --name $nic1 \
        --vnet $vnet \
        --subnet $subFront \
-       --network-security-group $nsgName
-       
+       --network-security-group $nsgName >>$TEMP
+
     az network nic create -g $rg \
        --name $nic2 \
        --vnet $vnet \
        --subnet $subBack \
        --network-security-group $nsgName \
-       --accelerated-networking true
+       --accelerated-networking true >>$TEMP
 
+    log "Creating vm-$baseNameLoop"
     az vm create \
         -g $rg \
         --os-disk-name osdisk-$baseNameLoop \
@@ -160,31 +180,28 @@ do
 	--authentication-type all \
         --admin-username $adminUsername \
         --admin-password "$adminPassword" \
-	--no-wait
-    
-    echo "Vm $baseNameLoop created."
+	--no-wait >>$TEMP
+
+    log "vm-$baseNameLoop in progress"
 done
 
 # Wait for deployment
-echo "Waiting for VM deployment"
-az vm wait -g $rg $(az vm list -g $rg --query "[].id" -o tsv)
+log "Waiting for VM deployment"
+az vm wait --created --ids $(az vm list -g $rg --query "[].id" -o tsv)
 
 # Enable boot diagnostics
-echo "Enabling boot diagnostics"
+log "Enabling boot diagnostics"
 az vm boot-diagnostics enable --storage $storageName \
-   --ids $(az vm list -g $rg --query "[].id" -o tsv)
+   --ids $(az vm list -g $rg --query "[].id" -o tsv) >>$TEMP
 
-for i in {1..2}; 
+for i in {1..2};
 do
-    pkgs
-	echo "Install $pkg on vm-$vmPrefix$i"
-	installName=install-$pkg
-	installUri=${scriptUri}${installName}
-	az vm extension set \
-	   -g $rg --vm-name vm-$vmPrefix$i \
-	   --name customScript \
-	   --publisher Microsoft.Azure.Extensions \
-	   --settings "$installJson"
+    log "Setup vm-$vmPrefix$i"
+    az vm extension set \
+       -g $rg --vm-name vm-$vmPrefix$i \
+       --name customScript \
+       --publisher Microsoft.Azure.Extensions \
+       --settings "$scriptJson"
 done
 
 # Display result
@@ -192,5 +209,5 @@ echo -n 'public ip: '
 az network public-ip list -g $rg \
 	       --query "[].{ip:ipAddress, vm:name}" | \
 	python -c 'import sys,json;print(json.load(sys.stdin)[0]["ip"])'
-	    
+
 echo "user: $adminUsername passwd: $adminPassword"
