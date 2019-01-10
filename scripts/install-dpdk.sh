@@ -1,5 +1,7 @@
 #! /bin/bash -e
 
+# Install current version of DPDK with Mellanox suppor
+
 # get necessary packages
 sudo apt install git build-essential libnuma-dev rdma-core libibverbs-dev -y
 
