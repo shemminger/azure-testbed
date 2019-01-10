@@ -1,8 +1,6 @@
 #! /bin/bash -e
 
 # get necessary packages
-sudo apt update
-sudo apt upgrade -y
 sudo apt install git build-essential libnuma-dev rdma-core libibverbs-dev -y
 
 # get current source
