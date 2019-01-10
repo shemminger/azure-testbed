@@ -1,9 +1,9 @@
 #! /bin/bash
 
 # get necessary packages
-apt-get update
-apt-get -y upgrade
-apt-get -y install git build-essential libnuma-dev rdma-core
+sudo apt-get update
+sudo apt-get -y upgrade
+sudo apt-get -y install git build-essential libnuma-dev rdma-core
 
 # get current source
 git clone https://dpdk.org/git/dpdk
