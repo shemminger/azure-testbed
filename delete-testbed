@@ -1,0 +1,25 @@
+#!/bin/bash
+# Delete resource groups f
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 basename(s)"
+    exit 1
+fi
+
+user=${AZURE_USER:-$USER}
+
+timestamp() {
+    date +"%T"
+}
+
+log() {
+    echo $(timestamp) "$@" 
+}
+
+for base
+do
+	rg=$user-$1-rg
+	log "Deleting Azure resource group $rg"
+	az group delete --name $rg
+done
+log "Done"
