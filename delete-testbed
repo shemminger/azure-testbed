@@ -20,6 +20,5 @@ for base
 do
 	rg=$user-$base-rg
 	log "Deleting Azure resource group $rg"
-	az group delete --name $rg
+	az group delete --name $rg --no-wait
 done
-log "Done"
