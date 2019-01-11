@@ -17,7 +17,7 @@ $ ./create-testbed dpdk upgrade install-dpdk
 
 This will create the following:
 
-![alt two machine plus bastion example](img/testbed.png)
+![alt two machine plus bastion example](/images/testbed.png)
 
 ### Environment variables
 
