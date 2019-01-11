@@ -15,8 +15,7 @@ $ ./create-testbed dpdk upgrade install-dpdk
 
 This will create the following:
 
-<img src="./img/testbed.png" alt="Two machine plus bastion example"
- width=800 height=400>
+![alt two machine plus bastion example][img/testbed.png"]
 
 ### Environment variables
 
