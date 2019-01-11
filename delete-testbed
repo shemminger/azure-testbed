@@ -18,7 +18,7 @@ log() {
 
 for base
 do
-	rg=$user-$1-rg
+	rg=$user-$base-rg
 	log "Deleting Azure resource group $rg"
 	az group delete --name $rg
 done
