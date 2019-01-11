@@ -8,17 +8,9 @@ fi
 
 user=${AZURE_USER:-$USER}
 
-timestamp() {
-    date +"%T"
-}
-
-log() {
-    echo $(timestamp) "$@"
-}
-
 for base
 do
 	rg=$user-$base-rg
-	log "Deleting Azure resource group $rg"
+	echo "Deleting Azure resource group $rg"
 	az group delete --name $rg --no-wait
 done
