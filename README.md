@@ -4,7 +4,9 @@ These scripts provide a simple way to setup a three machine network testbed on A
 
 ## Getting Started
 
-All these scripts rely on the [Azure CLI][https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest] on Linux.
+All these scripts rely on the
+[Azure CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest)
+on Linux.
 
 These instructions will show you how to set a simple 3 machine scenario using an existing Azure account.
 
@@ -15,7 +17,7 @@ $ ./create-testbed dpdk upgrade install-dpdk
 
 This will create the following:
 
-![alt two machine plus bastion example][img/testbed.png"]
+![alt two machine plus bastion example](img/testbed.png)
 
 ### Environment variables
 
