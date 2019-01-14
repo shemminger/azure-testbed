@@ -1,10 +1,15 @@
 #!/bin/bash
 
 # Creates 3 machine Azure testbed
-
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 basename [packages]"
+    echo "Usage: $0 [-b] basename [packages]"
     exit 1
+fi
+
+bootDiag=
+if [ "$1" = '-b' ]; then
+    bootDiag=yes
+    shift
 fi
 
 # basename is component of global resources
@@ -26,12 +31,13 @@ subBack=$baseName-back
 nsgName=$baseName-nsg
 
 adminUsername=${AZURE_USER:-azure-user}
-adminPassword=$(pwgen -cny 18 1)
 
-# Storage accounts are limited to 24 characters and only alphanumeric
-# need it for boot diagnostics and serial console
-storageName=$(echo $rg $adminPassword | \
-		  md5sum | awk '{ print "st"substr($1,20) }')
+if [ -n "$bootDiag" ]; then
+    # Storage accounts are limited to 24 characters and only alphanumeric
+    # need it for boot diagnostics (and serial console)
+    storageName=$(echo $rg $adminPassword | \
+		      md5sum | awk '{ print "st"substr($1,20) }')
+fi
 
 # Logging with timestamp
 log() {
@@ -45,8 +51,6 @@ githubPath="raw.githubusercontent.com/shemminger/azure-testbed/master/scripts/"
 
 # rest of the args are the packages
 # validate that script exists and build json arg
-scriptJson='{ "fileUris" : [ '
-scriptCmd=
 for pkg
 do
     scriptName=$pkg".sh"
@@ -60,18 +64,10 @@ do
 	>&2 echo "$scriptUri does not exist"
 	exit 1
     fi
-
-    # doing JSON in Bash is messy
-    scriptJson=${scriptJson}\"$scriptUri\"
-    shift
-    [ $# -eq 0 ] || scriptJson=${scriptJson}','
-    scriptCmd=${scriptCmd}"./"$scriptName";"
 done
-scriptJson=${scriptJson}'], "commandToExecute" : "'${scriptCmd}'" }'
-
 
 # AZ CLI gives chatty JSON output lets put elsewhere
-TEMP=$(mktemp /tmp/az-output.XXXXXXXX)
+TEMP=/tmp/az-output.$(date "+%F:%T")
 log "Creating resources (see $TEMP)"
 
 # Abort on error
@@ -101,11 +97,6 @@ az network nsg rule create --resource-group  $rg \
   --source-port-range '*' --destination-address-prefix '*' --destination-port-range 22 \
   --access allow >>$TEMP
 
-az storage account create --resource-group $rg \
-   --name $storageName \
-   --location $location \
-   --sku Standard_LRS --kind StorageV2 >>$TEMP
-
 ## bastion server
 vmPrefix=bastion1
 vmSizeBastion=Standard_B1s
@@ -128,26 +119,34 @@ az network nic create \
     --vnet-name $vnet  >> $TEMP
 
 log "Creating Bastion Server: $baseNameBastion"
+vmName=vm-$baseNameBastion
 az vm create \
     -g $rg \
     --os-disk-name osdisk-$baseNameBastion \
-    --name vm-$baseNameBastion \
+    --name $vmName \
     --nics $vNic \
     --storage-sku premium_lrs \
     --size $vmSizeBastion \
     --image $imageName \
     --admin-username $adminUsername \
     --authentication-type ssh \
-    --ssh-key-value "@$pubKey" \
-    --no-wait >> $TEMP
+    --ssh-key-value "@$pubKey" >> $TEMP
 
+log "Generate ssh key on bastion server"
+bastionKey=/tmp/ssh-id_rsa.$vmName
+az vm run-command invoke \
+   -g $rg -n $vmName \
+   --command-id RunShellScript \
+   --scripts "su - $user -c \"ssh-keygen -N '' -f .ssh/id_rsa -t rsa; cat .ssh/id_rsa.pub\"" | \
+    python -c 'import sys,json;print(json.load(sys.stdin)["value"][0]["message"])' | \
+    grep '^ssh-rsa' > $bastionKey
 
 # Ubuntu ACC
-vmPrefix=ubuntu-acc
+vmPrefix=ubuntu
 accNet=true
 imageName=$ubuntuImage
 
-for i in {1..2};
+for i in {1..3};
 do
     baseNameLoop=$vmPrefix$i
     nic1=nic1-${baseNameLoop}
@@ -158,7 +157,8 @@ do
        --name $nic1 \
        --vnet $vnet \
        --subnet $subFront \
-       --network-security-group $nsgName >>$TEMP
+       --network-security-group $nsgName \
+       --accelerated-networking true >>$TEMP
 
     az network nic create -g $rg \
        --name $nic2 \
@@ -179,30 +179,51 @@ do
         --image $imageName \
 	--authentication-type all \
         --admin-username $adminUsername \
-        --admin-password "$adminPassword" \
+	--authentication-type ssh \
+	--ssh-key-value "@$bastionKey" \
 	--no-wait >>$TEMP
 
     log "vm-$baseNameLoop in progress"
 done
 
+# Enable boot diagnostics
+if [ -n "$bootDiag" ]; then
+    log "Enabling boot diagnostics"
+    az storage account create --resource-group $rg \
+      --name $storageName \
+      --location $location \
+      --sku Standard_LRS --kind StorageV2 >>$TEMP
+
+    az vm boot-diagnostics enable --storage $storageName \
+       --ids $(az vm list -g $rg --query "[].id" -o tsv) >>$TEMP
+fi
+
 # Wait for deployment
 log "Waiting for VM deployment"
 az vm wait --created --ids $(az vm list -g $rg --query "[].id" -o tsv) >>$TEMP
 
-# Enable boot diagnostics
-log "Enabling boot diagnostics"
-az vm boot-diagnostics enable --storage $storageName \
-   --ids $(az vm list -g $rg --query "[].id" -o tsv) >>$TEMP
+set +e
 
-for i in {1..2};
+# Setup packages
+for i in {1..3};
 do
-    log "Setup vm-$vmPrefix$i"
-    az vm extension set \
-       -g $rg --vm-name vm-$vmPrefix$i \
-       --name customScript \
-       --publisher Microsoft.Azure.Extensions \
-       --settings "$scriptJson"
+    # Run parallel threads one per VM
+    ( for pkg
+      do
+	log "Setup $pkg on vm-$vmPrefix$i"
+	scriptName=$pkg".sh"
+	scriptJson=$(printf '{ "fileUris" : [ "%s" ], "commandToExecute" : "%s" }' \
+		     'https://'${githubPath}${scriptName} './'$scriptName)
+
+	az vm extension set \
+	   -g $rg --vm-name vm-$vmPrefix$i \
+	   --name customScript \
+	   --publisher Microsoft.Azure.Extensions \
+	   --settings "$scriptJson" >> $TEMP
+      done ) &
 done
+
+wait
 
 # Display result
 echo -n 'public ip: '
