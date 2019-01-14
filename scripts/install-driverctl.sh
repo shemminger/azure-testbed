@@ -1,6 +1,6 @@
 #! /bin/bash -e
 
-sudo apt-get build-depends driverctl
+sudo apt-get install make pkg-config -y
 
 # Install current version of driverctl
 
