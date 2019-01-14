@@ -226,9 +226,9 @@ done
 wait
 
 # Display result
+log "Ready to go"
 echo -n 'public ip: '
 az network public-ip list -g $rg \
 	       --query "[].{ip:ipAddress, vm:name}" | \
 	python -c 'import sys,json;print(json.load(sys.stdin)[0]["ip"])'
 
-echo "user: $adminUsername passwd: $adminPassword"
