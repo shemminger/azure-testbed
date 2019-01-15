@@ -6,6 +6,8 @@
 sudo apt-get install git build-essential \
      libnuma-dev libmnl-dev rdma-core libibverbs-dev -y
 
+cd /usr/src
+
 # get current source
 git clone https://dpdk.org/git/dpdk
 
@@ -45,6 +47,4 @@ CONFIG_RTE_LIBRTE_NETVSC_PMD=y
 CONFIG_RTE_LIBRTE_MLX5_PMD=y
 @EOF@
 
-make config T=azure
-make -j8
 
