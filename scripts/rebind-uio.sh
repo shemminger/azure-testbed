@@ -9,8 +9,8 @@ if [ ! -d /sys/module/uio_hv_generic ]; then
     sudo sh -c "echo $NET_UUID > /sys/bus/vmbus/drivers/uio_hv_generic/new_id"
 fi
 
-if [ ! -l /sys/class/net/eth1 ]; then
-    echo  "eth1 is missing (already rebound?)"
+if [ ! -L /sys/class/net/eth1/device ]; then
+    echo "eth1 is missing (already rebound?)"
     exit 1
 fi
 
