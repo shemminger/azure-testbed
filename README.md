@@ -8,7 +8,7 @@ All these scripts rely on the
 [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest)
 on Linux.
 
-These instructions will show you how to set a simple 3 machine scenario using an existing Azure account.
+These instructions will show you how to set a simple 2 machine scenario using an existing Azure account.
 
 ```
 $ az login
@@ -27,6 +27,7 @@ This script can be customized to use different location or other Azure values by
  - AZURE_LOCATION where to put the resources (defaults to westus).
  - AZURE_SKU machine type for the network hosts (defaults to D8s_v3)
  - AZURE_SSH_KEY - the public key file to see the bastion host with (defaults to .ssh/id_rsa.pub)
+ - AZURE_TEST_COUNT - the number of VM's in the test network
 
 ## Customizing
 
