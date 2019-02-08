@@ -3,7 +3,7 @@
 # Install current version of DPDK with Mellanox suppor
 
 # get necessary packages
-sudo apt-get install git build-essential \
+sudo apt-get install git build-essential pkg-config \
      libnuma-dev libmnl-dev rdma-core libibverbs-dev -y
 
 cd /usr/src
