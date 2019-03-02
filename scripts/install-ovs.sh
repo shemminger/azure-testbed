@@ -2,15 +2,14 @@
 
 set -xe
 
+# DPDK NEEDS TO HAVE BEEN ALREADY BUILT in "/root/dpdk-${DPDK_VERSION}" folder
 export DPDK_VERSION="18.02.2"
+export RTE_SDK="/root/dpdk-${DPDK_VERSION}"
+export RTE_TARGET="x86_64-native-linuxapp-gcc"
 
 export OVS_VERSION="2.10.1"
-
 export OVS_LINK="https://www.openvswitch.org/releases/openvswitch-${OVS_VERSION}.tar.gz"
 
-export RTE_SDK="/root/dpdk-${DPDK_VERSION}"
-
-export RTE_TARGET="x86_64-native-linuxapp-gcc"
 
 function build_ovs() {
     apt install -y autoconf libtool
@@ -56,10 +55,19 @@ function configure_ovs() {
     OVS_BRIDGE="br-dpdk"
     ovs-vsctl add-br "${OVS_BRIDGE}" -- set bridge "${OVS_BRIDGE}" datapath_type=netdev
 
-    ovs-vsctl add-port "${OVS_BRIDGE}" p1 -- set Interface p1 type=dpdk options:dpdk-devargs=net_vdev_netvsc0,iface=eth1
-    ovs-vsctl add-port "${OVS_BRIDGE}" p2 -- set Interface p2 type=dpdk options:dpdk-devargs=net_vdev_netvsc1,iface=eth2
-    ovs-vsctl add-port "${OVS_BRIDGE}" p3 -- set Interface p3 type=dpdk options:dpdk-devargs=0002:00:02.0
-    ovs-vsctl add-port "${OVS_BRIDGE}" p4 -- set Interface p4 type=dpdk options:dpdk-devargs=mlx4_2
+    # use testpmd show port info <port_number>
+    # we will use eth1 and eth2, which are mapped in dpdk as net_tap_vsc0 and net_tap_vsc1
+
+    IFACE_NAME_1="eth1"
+    IFACE_NAME_2="eth2"
+    # TO BE SEEN BY DPDK, INTERFACES SHOULD NOT BE CONFIGURED
+    ip addr flush dev $IFACE_NAME_1
+    ip addr flush dev $IFACE_NAME_2
+
+    IFACE_DPDK_NAME_1="net_tap_vsc0"
+    IFACE_DPDK_NAME_2="net_tap_vsc1"
+    ovs-vsctl add-port "${OVS_BRIDGE}" p1 -- set Interface p1 type=dpdk options:dpdk-devargs="${IFACE_DPDK_NAME_1}",iface="${IFACE_NAME_1}"
+    ovs-vsctl add-port "${OVS_BRIDGE}" p2 -- set Interface p2 type=dpdk options:dpdk-devargs="${IFACE_DPDK_NAME_2}",iface="${IFACE_NAME_2}"
 }
 
 build_ovs
