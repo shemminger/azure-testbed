@@ -23,12 +23,11 @@ pubKey=$AZURE_SSH_KEY
 ubuntuImage=${AZURE_IMAGE:-"Canonical:UbuntuServer:18.10:latest"}
 user=${AZURE_USER:-$USER}
 vmCount=${AZURE_TEST_COUNT:-2}
+nicCount=${AZURE_NIC_COUNT:-2}
 
 vmSize=Standard_${Sku}
 rg=$user-$baseName-rg
 vnet=$baseName-vnet
-subFront=$baseName-front
-subBack=$baseName-back
 nsgName=$baseName-nsg
 
 adminUsername=${AZURE_USER:-azure-user}
@@ -80,14 +79,21 @@ log "Setup Azure resource group $rg in $location"
 az group create --name $rg \
    --location $location >>$TEMP
 
+subFront=$baseName-sub1
 az network vnet create -g $rg \
    --name $vnet --address-prefix 172.16.0.0/16 \
    --subnet-name $subFront \
    --subnet-prefix 172.16.1.0/24 >>$TEMP
 
-az network vnet subnet create -g $rg \
-   --vnet-name $vnet --name $subBack \
-   --address-prefix 172.16.2.0/24 >>$TEMP
+for n in $(seq 2 $nicCount)
+do
+    subName=$baseName-sub$n
+
+    az network vnet subnet create -g $rg \
+       --vnet-name $vnet --name $subName \
+       --address-prefix 172.16.$n.0/24 >>$TEMP
+
+done
 
 az network nsg create --resource-group $rg \
   --name $nsgName >>$TEMP
@@ -150,30 +156,29 @@ imageName=$ubuntuImage
 for i in $(seq 1 $vmCount)
 do
     baseNameLoop=$vmPrefix$i
-    nic1=nic1-${baseNameLoop}
-    nic2=nic2-${baseNameLoop}
+    nics=()
 
-    log "Creating $nic1 and $nic2"
-    az network nic create -g $rg \
-       --name $nic1 \
-       --vnet $vnet \
-       --subnet $subFront \
-       --network-security-group $nsgName \
-       --accelerated-networking true >>$TEMP
+    for n in $(seq 1 $nicCount)
+    do
+	nic=nic${n}-${baseNameLoop}
+	subName=$baseName-sub$n
+	nics[$n]=$nic
 
-    az network nic create -g $rg \
-       --name $nic2 \
-       --vnet $vnet \
-       --subnet $subBack \
-       --network-security-group $nsgName \
-       --accelerated-networking true >>$TEMP
+	log "Creating $nic"
+	az network nic create -g $rg \
+	   --name $nic \
+	   --vnet $vnet \
+	   --subnet $subName \
+	   --network-security-group $nsgName \
+	   --accelerated-networking true >>$TEMP
+    done
 
     log "Creating vm-$baseNameLoop"
     az vm create \
         -g $rg \
         --os-disk-name osdisk-$baseNameLoop \
         --name vm-$baseNameLoop \
-        --nics $nic1 $nic2 \
+        --nics ${nics[@]} \
 	--no-wait \
         --storage-sku premium_lrs \
         --size $vmSize \
@@ -232,4 +237,3 @@ echo -n 'public ip: '
 az network public-ip list -g $rg \
 	       --query "[].{ip:ipAddress, vm:name}" | \
 	python -c 'import sys,json;print(json.load(sys.stdin)[0]["ip"])'
-
