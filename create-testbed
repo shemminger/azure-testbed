@@ -20,7 +20,7 @@ shift
 location=${AZURE_LOCATION:-westus}
 Sku=${AZURE_SKU:-D8s_v3}
 pubKey=$AZURE_SSH_KEY
-ubuntuImage=${AZURE_IMAGE:-"Canonical:UbuntuServer:18.04:latest"}
+ubuntuImage=${AZURE_IMAGE:-"Canonical:UbuntuServer:18.04-LTS:latest"}
 user=${AZURE_USER:-$USER}
 vmCount=${AZURE_TEST_COUNT:-2}
 nicCount=${AZURE_NIC_COUNT:-2}
